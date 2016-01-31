@@ -1,0 +1,61 @@
+---
+title: "pml"
+author: "Swati"
+date: "21 January 2016"
+output: html_document
+---
+#Overview
+The goal of this project is to predict classe variable which defines the manner in which people did exercise.There are five different classe variables which covers all the possible manners. A model needs to be built which correctly predicts classe and expected in versus out of sample error needs to be assessed as part of this project. 
+
+##Removing redundant columns
+The training data set has 19622 rows and 160 columns. Many columns have NA values. First step is to remove redundant columns. My approach goes as follows:
+1. Find variables which are having near zero variance across the training dataset.
+2. In the resulting data set that came by doing 1 above, second subsetting was done to find variables which are having less than 10% unique values. 10% was taken to limit # of variables to <=20 out of 160 initially.This limits total variable count to 13 from 160 initially thus, giving list of variables whose values are showing maximum variations across the data set.
+3. This was followed by removing variables for which most of the values were NA. A peek in the data set obtained in 2 above showed that out of 19622 samples, 11 variables were having count of NAs as 19216 or below and rest 2 are having NAs count of 19216.
+
+##Building the model
+Training data set was further broken into new training and validation data set(to cross validate model on one set before applying it to final test set). Since it's a classifier problem, I thought of applying rpart first. However, accuracy came out to be very low(shown below). This was followed by applying random forest method which gave good accuracy.
+
+```{r cache=TRUE}
+library(caret)
+#reading training and test data sets
+a <- read.csv("pml-training.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c("","NA"))
+test <- read.csv("pml-testing.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE, na.strings = c("","NA"))
+dim(a)
+#selecting only those columns with numeric values. I'll add classe and user name in the end.
+b <- a[,sapply(a, is.numeric)]
+#finding variables with nzv = TRUE
+b1 <- b[,!nearZeroVar(b, saveMetrics = TRUE)$nzv]
+#choosing columns with percentage unique values greater than 10.
+b2 <- b1[,nearZeroVar(b1, saveMetrics = TRUE)$percentUnique > 10]
+#removing columns with high NA density compared to other columns
+b3 <- b2[, sapply(b2, function(x) length(which(is.na(x)))) < 19216]
+b4 <- b3[,-(1:2)]
+#adding user name and classe columns.
+b5 <- cbind(a$user_name,b4)
+b6 <- cbind(a$classe, b5)
+b6$classe <- as.factor(b6$`a$classe`)
+b6$user_name <- as.factor(b6$`a$user_name`)
+dim(b6)
+b6 <- b6[,-(1:2)]
+#fitting rpart
+model1 <- train(classe ~ ., method = "rpart", data = b6)
+fit1 <- predict(model1, b6)
+#finding accuracy of rpart
+confusionMatrix(fit1, b6$classe)
+summary(fit1)
+table(fit1, b6$classe)
+#fitting random forest method with cross validation for train control.
+model2 <- train(classe ~ ., method = "rf", data = b6, trControl = trainControl(method = "cv"))
+fit2 <- predict(model2, b6)
+#finding accuracy of random forest
+confusionMatrix(fit2, b6$classe)
+summary(fit2)
+table(fit2, b6$classe)
+#predicting test set classe
+predict(model, test)
+```
+#In sample versus out of sample errors
+As evident from above, the training set accuracy is quite high here as evident from final table. Since, accuracy is coming out be 1, it implies two things; either the model is capturing noise and over-fitting or model is itself capable of perfectly determining the outcome with no possible noise involved.
+However, on applying the model to test set(20 samples), 19 out of 20 were correct reducing the test set accuracy to 95%. This validates the point that test set error is always greater than or equal to training set error(~0% in training and 5% in test here).
+
